@@ -145,7 +145,7 @@ const defaultFigureTitles: Record<FigureKind, string> = {
 
 const defaultFigureCaptions: Record<FigureKind, string> = {
   score2d:
-    `Ellipses show approximate 95% normal score regions; groups with fewer than ${minSamplesFor2dEllipse} samples are omitted.`,
+    `Points show sample PCA scores; optional ellipses show approximate 95% normal score regions for groups with at least ${minSamplesFor2dEllipse} samples.`,
   scree: 'Bars show per-component variance; orange line shows cumulative variance.',
   loadings: 'Bars rank variables by summed loading contribution across PC1-PC3.',
   biplot: 'Red vectors indicate top contributing variables in the selected PC plane.',
@@ -360,6 +360,7 @@ const generateMethodsTexts = ({
   groupColumn,
   shapeColumn,
   showEllipsoids,
+  showFigureEllipses,
   showCentroids,
   show3dLabels,
   showFigureLabels,
@@ -370,6 +371,7 @@ const generateMethodsTexts = ({
   groupColumn: string
   shapeColumn: string
   showEllipsoids: boolean
+  showFigureEllipses: boolean
   showCentroids: boolean
   show3dLabels: boolean
   showFigureLabels: boolean
@@ -408,7 +410,10 @@ const generateMethodsTexts = ({
     `samples were colored by ${groupColumn}`,
     shapeColumn !== 'none' ? `marker shapes encoded ${shapeColumn}` : null,
     showEllipsoids
-      ? 'approximate 95% normal score regions were shown for groups with sufficient sample size'
+      ? '3D approximate 95% normal score ellipsoids were shown for groups with sufficient sample size'
+      : null,
+    showFigureEllipses
+      ? 'static 2D score ellipses were shown for groups with sufficient sample size'
       : null,
     showCentroids ? 'group centroids were marked' : null,
     show3dLabels ? 'sample labels were displayed in the 3D plot' : null,
@@ -419,19 +424,30 @@ const generateMethodsTexts = ({
   const layerTextZh = [
     `样本颜色表示 ${groupColumn} 分组`,
     shapeColumn !== 'none' ? `点形状表示 ${shapeColumn}` : null,
-    showEllipsoids ? '对样本量足够的分组显示近似 95% 正态得分分布区域' : null,
+    showEllipsoids ? '3D 图对样本量足够的分组显示近似 95% 正态得分椭球' : null,
+    showFigureEllipses ? '2D 静态图对样本量足够的分组显示近似 95% 正态得分椭圆' : null,
     showCentroids ? '标记各组质心' : null,
     show3dLabels ? '3D 图显示样本标签' : null,
     showFigureLabels ? '2D 静态得分图显示样本标签' : null,
   ]
     .filter(Boolean)
     .join('；')
-  const regionMethodText = showEllipsoids
-    ? `The 2D ellipses and 3D ellipsoids represent approximate normal score regions rather than confidence intervals for group means. Ellipse estimation requires at least ${minSamplesFor2dEllipse} samples per displayed group, and full covariance-based 3D ellipsoid estimation requires at least ${minSamplesFor3dEllipsoid} samples per displayed group.`
-    : 'No group score ellipses or ellipsoids were displayed.'
-  const regionMethodTextZh = showEllipsoids
-    ? `2D 图中的椭圆和 3D 图中的椭球表示近似正态得分分布区域，并不是分组均值的置信区间；2D 椭圆每个显示分组至少需要 ${minSamplesFor2dEllipse} 个样本，基于完整协方差矩阵的 3D 椭球每个显示分组至少需要 ${minSamplesFor3dEllipsoid} 个样本。`
-    : '未显示分组得分椭圆或椭球。'
+  const regionMethodText = [
+    showFigureEllipses
+      ? `Static 2D score ellipses represent approximate normal score regions rather than confidence intervals for group means, and require at least ${minSamplesFor2dEllipse} samples per displayed group.`
+      : 'Static 2D score ellipses were not displayed.',
+    showEllipsoids
+      ? `Full covariance-based 3D score ellipsoids require at least ${minSamplesFor3dEllipsoid} samples per displayed group.`
+      : '3D score ellipsoids were not displayed.',
+  ].join(' ')
+  const regionMethodTextZh = [
+    showFigureEllipses
+      ? `2D 静态图中的椭圆表示近似正态得分分布区域，并不是分组均值的置信区间；每个显示分组至少需要 ${minSamplesFor2dEllipse} 个样本。`
+      : '2D 静态图未显示分组得分椭圆。',
+    showEllipsoids
+      ? `基于完整协方差矩阵的 3D 得分椭球每个显示分组至少需要 ${minSamplesFor3dEllipsoid} 个样本。`
+      : '3D 图未显示分组得分椭球。',
+  ].join('')
 
   return {
     en: `Principal component analysis (PCA) was performed in PCA Figure Studio on a sample-by-feature matrix parsed from the uploaded quantitative table (${orientationText}). The analysis included ${result.sampleCount} samples and ${result.featureCount} retained numeric features.${skippedText}${zeroVarianceText} ${transformText} Before decomposition, ${scalingMethodText[result.options.scalingMethod]}. PCA was computed by singular value decomposition of the preprocessed matrix. The first three principal components explained ${formatPercent(result.explained[0])}, ${formatPercent(result.explained[1])}, and ${formatPercent(result.explained[2])} of the variance, respectively (${formatPercent(result.cumulative[2])} cumulative). Sample groups were read from the uploaded metadata table using "${sampleColumn}" as the sample identifier and "${groupColumn}" as the grouping column. In the PCA visualization, ${layerText}. ${regionMethodText}`,
@@ -800,6 +816,7 @@ const App = () => {
   const [showEllipsoids, setShowEllipsoids] = useState(true)
   const [showCentroids, setShowCentroids] = useState(false)
   const [show3dLabels, setShow3dLabels] = useState(false)
+  const [showFigureEllipses, setShowFigureEllipses] = useState(true)
   const [showFigureLabels, setShowFigureLabels] = useState(false)
   const [shapeColumn, setShapeColumn] = useState<ShapeColumn>('none')
   const [articleMode, setArticleMode] = useState(true)
@@ -1176,6 +1193,9 @@ const App = () => {
   const groupsWithout3dEllipsoid = [...groupSampleCounts.entries()]
     .filter(([, count]) => count < minSamplesFor3dEllipsoid)
     .map(([group, count]) => `${group} (${count})`)
+  const groupsWithout2dEllipse = [...groupSampleCounts.entries()]
+    .filter(([, count]) => count < minSamplesFor2dEllipse)
+    .map(([group, count]) => `${group} (${count})`)
   const selectedSize = useCustomFigureSize
     ? { label: 'Custom', width: customFigureWidth, height: customFigureHeight }
     : figureSizes[figureSize]
@@ -1187,7 +1207,7 @@ const App = () => {
     title: figureTitle,
     subtitle: figureSubtitle,
     caption: figureCaption,
-    showEllipses: showEllipsoids,
+    showEllipses: showFigureEllipses,
     showCentroids,
     showLabels: showFigureLabels,
     topLoadings,
@@ -1209,6 +1229,7 @@ const App = () => {
         groupColumn: activeGroupColumn,
         shapeColumn: activeShapeColumn,
         showEllipsoids,
+        showFigureEllipses,
         showCentroids,
         show3dLabels,
         showFigureLabels,
@@ -1594,8 +1615,8 @@ const App = () => {
           <PanelTitle icon={<Tags size={18} />} title="图层" />
           <div className="switch-row">
             <span>
-              <strong>近似 95% 得分区域</strong>
-              <small>常用于 PCA 得分图；表示组内样本分布范围，不是均值置信区间</small>
+              <strong>3D 近似 95% 得分椭球</strong>
+              <small>只控制 3D PCA 图；表示组内样本分布范围，不是均值置信区间</small>
             </span>
             <label className="switch">
               <input
@@ -1690,6 +1711,30 @@ const App = () => {
               静态图会使用当前 log 转换、特征缩放和分组设置重新生成。
             </small>
           </div>
+
+          <div className="switch-row">
+            <span>
+              <strong>2D 近似 95% 得分椭圆</strong>
+              <small>只控制 2D PCA score / biplot；表示组内样本分布范围，不是均值置信区间</small>
+            </span>
+            <label className="switch">
+              <input
+                type="checkbox"
+                checked={showFigureEllipses}
+                onChange={(event) => {
+                  showFigurePreview()
+                  setShowFigureEllipses(event.target.checked)
+                }}
+              />
+              <span />
+            </label>
+          </div>
+          {showFigureEllipses && groupsWithout2dEllipse.length > 0 ? (
+            <p className="inline-warning">
+              2D 得分椭圆至少需要每组 {minSamplesFor2dEllipse}{' '}
+              个样本；以下分组当前不会绘制 2D 椭圆：{groupsWithout2dEllipse.join('、')}。
+            </p>
+          ) : null}
 
           <div className="switch-row">
             <span>
