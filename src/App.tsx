@@ -83,6 +83,9 @@ const componentOptions: Array<{ value: ComponentKey; label: string }> = [
 ]
 
 const mainCamera = { eye: { x: 1.42, y: 1.34, z: 0.95 } }
+const exportSceneDomain = { x: [0.01, 0.99], y: [0.08, 0.96] }
+const exportMargin = { l: 42, r: 46, t: 42, b: 70 }
+const exportCameraDistance = 1.18
 
 const legendOrientationOptions: Array<{
   value: LegendOrientation
@@ -259,6 +262,33 @@ const defaultPlotPreset: PlotPreset = 'ellipsoid'
 
 const formatPercent = (value: number | undefined) =>
   `${(((value ?? 0) * 1000) / 10).toFixed(1)}%`
+
+const cameraForExport = (camera: unknown) => {
+  if (!camera || typeof camera !== 'object') return camera
+
+  const exportCamera = structuredClone(camera) as {
+    eye?: { x?: number; y?: number; z?: number }
+  }
+  if (!exportCamera.eye) return exportCamera
+
+  exportCamera.eye = {
+    ...exportCamera.eye,
+    x:
+      typeof exportCamera.eye.x === 'number'
+        ? exportCamera.eye.x * exportCameraDistance
+        : exportCamera.eye.x,
+    y:
+      typeof exportCamera.eye.y === 'number'
+        ? exportCamera.eye.y * exportCameraDistance
+        : exportCamera.eye.y,
+    z:
+      typeof exportCamera.eye.z === 'number'
+        ? exportCamera.eye.z * exportCameraDistance
+        : exportCamera.eye.z,
+  }
+
+  return exportCamera
+}
 
 const readFile = async (
   event: React.ChangeEvent<HTMLInputElement>,
@@ -1074,7 +1104,7 @@ const App = () => {
       legend: legendLayout(legendPosition, legendOrientation, articleMode),
       scene: {
         domain: articleMode
-          ? { x: [0, 1], y: [0, 1] }
+          ? { x: [0.02, 0.98], y: [0.08, 0.94] }
           : { x: [0.02, 0.98], y: [0.04, 0.98] },
         xaxis: {
           title: {
@@ -1268,16 +1298,19 @@ const App = () => {
     const currentScene = (chartRef.current as HTMLDivElement & {
       _fullLayout?: { scene?: { camera?: unknown } }
     })._fullLayout?.scene
-    const currentCamera = currentScene?.camera
+    const currentCamera = cameraForExport(currentScene?.camera)
     const exportElement = document.createElement('div')
     const state = plotExportRef.current
+    const baseScene = (state.layout.scene as Record<string, unknown>) ?? {}
     const exportLayout = {
       ...state.layout,
       width,
       height,
       autosize: false,
+      margin: exportMargin,
       scene: {
-        ...((state.layout.scene as Record<string, unknown>) ?? {}),
+        ...baseScene,
+        domain: exportSceneDomain,
         ...(currentCamera ? { camera: currentCamera } : {}),
       },
     }
@@ -1305,11 +1338,11 @@ const App = () => {
     })
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
     const image = await Plotly.toImage(exportElement, {
-        format,
-        width,
-        height,
-        scale: 1,
-      })
+      format,
+      width,
+      height,
+      scale: 1,
+    })
     Plotly.purge(exportElement)
     exportElement.remove()
 
