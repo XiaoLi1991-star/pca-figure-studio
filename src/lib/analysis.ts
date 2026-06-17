@@ -282,9 +282,9 @@ export const runPca = (
   const loadingMatrix = pca.getLoadings().to2DArray()
   const loadings = retainedFeatureNames
     .map((feature, index) => {
-      const pc1 = loadingMatrix[0]?.[index] ?? 0
-      const pc2 = loadingMatrix[1]?.[index] ?? 0
-      const pc3 = loadingMatrix[2]?.[index] ?? 0
+      const pc1 = loadingMatrix[index]?.[0] ?? 0
+      const pc2 = loadingMatrix[index]?.[1] ?? 0
+      const pc3 = loadingMatrix[index]?.[2] ?? 0
 
       return {
         feature,
